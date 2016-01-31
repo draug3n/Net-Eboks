@@ -55,19 +55,19 @@ sub response
 		$sl =~ s/\+/ /g;
 		return undef, $sl;
 	}
-	
+
 	for ( split /,\s*/, $response->header('x-eboks-authenticate')) {
 		warn "bad x-eboks-authenticate: $_\n" unless m/^(sessionid|nonce)="(.*?)"$/;
 		$self->{$1} = $2;
 	}
-		
+
 	return $response->decoded_content unless $decode;
-	
+
 	my %options = ref($decode) ? %$decode : ();
 	my $content = $response->decoded_content;
 	if ( $content !~ /[^\x00-\xff]/ && $content =~ /[\x80-\xff]/ ) {
 		# try to upgrade
-		eval { 
+		eval {
 			my $c = decode('latin1', $content);
 			$content = $c;
 		};
@@ -109,7 +109,7 @@ XML
 	);
 	$login->protocol('HTTP/1.1');
 
-	return $login, sub { 
+	return $login, sub {
 		my ($xml, $error) = $self-> response({ForceArray => 0}, @_);
 		return $xml, $error unless $xml;
 		return undef, "'User' is not present in response" unless exists $xml->{User};
@@ -179,7 +179,7 @@ sub messages
 	$limit  //= 1;
 	$offset //= 0;
 	$self-> xmlget(
-		"/mobile/1/xml.svc/en-gb/$self->{uid}/0/mail/folder/$folder_id?skip=$offset&take=$limit", 
+		"/mobile/1/xml.svc/en-gb/$self->{uid}/0/mail/folder/$folder_id?skip=$offset&take=$limit",
 		[ qw(Messages 0 MessageInfo) ],
 		KeyAttr => 'id'
 	);
@@ -199,7 +199,7 @@ sub message
 sub content
 {
 	my ( $self, $folder_id, $content_id ) = @_;
-	return 
+	return
 		$self-> get( "/mobile/1/xml.svc/en-gb/$self->{uid}/0/mail/folder/$folder_id/message/$content_id/content" ), sub {
 			$self-> response( 0, @_ )
 		};
@@ -207,7 +207,7 @@ sub content
 
 sub attachments { $_[1]->{Attachements}->[0]->{AttachmentInfo} }
 
-sub filename    { 
+sub filename    {
 	my $fn = $_[1]-> {name};
 	$fn =~ s[:\\\/][_];
 	my $fmt = lc($_[1]->{format});
@@ -297,19 +297,20 @@ sub assemble_mail
 			Filename => $fn,
 		);
 
-		# XXX hack filename for utf8
+		# FIXME
+        # Many MIME decoders do not like non-ascii characters in filenames
+        # Also, utf/urlencoding breaks procmail regexes
+        # So, we drop them
 		next unless $fn =~ m/[^\x00-\x80]/;
-		$fn = Encode::encode('utf-8', $fn);
-		$fn =~ s/([^A-Za-z])/'%'.sprintf("%02x",ord($1))/ge;
+		$fn =~ tr/a-zA-Z0-9_\- \.//cd;
 		for ( 'Content-disposition', 'Content-type') {
-			my $v = $entity->head->get($_);
-			$v =~ s/name="(.*)"/name*=.utf-8''$fn/;
+			$v =~ s/name="(.*)"/name*="$fn"/;
 			$entity->head->replace($_, $v);
 		}
 	}
 
-	return 
-		'From noreply@localhost ' . 
+	return
+		'From noreply@localhost ' .
 		$date->strftime('%a %b %d %H:%M:%S %Y') . "\n" .
 		$mail->stringify
 		;
@@ -342,7 +343,7 @@ sub fetch_message_and_attachments
 
 		my $attachments = $self-> attachments( $xml );
 		my @attachments = keys %$attachments;
-		my %opt = ( 
+		my %opt = (
 			message     => $xml,
 			attachments => {},
 		);
@@ -352,7 +353,7 @@ sub fetch_message_and_attachments
 		my ($body, $error) = @_;
 		return ($body, $error) unless defined $body;
 		$opt{body} = $body;
-	
+
 		my $att_id = shift @attachments or return \%opt;
 		context $self-> fetch_request( $self-> content( $message->{folderId}, $att_id ));
 	tail {
