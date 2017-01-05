@@ -292,21 +292,10 @@ sub assemble_mail
 		my $fn = $self->filename($msg);
 		my $entity = $mail->attach(
 			Type     => $self->mime_type($msg),
-			Encoding => 'base64',
-			Data     => $opt{body},
-			Filename => $fn,
+			Encoding => 'quoted-printable',
+			Data     => $body,
+			Filename => encode('utf-8',$sender . ' - ' . $fn),
 		);
-
-		# FIXME
-        # Many MIME decoders do not like non-ascii characters in filenames
-        # Also, utf/urlencoding breaks procmail regexes
-        # So, we drop them
-		next unless $fn =~ m/[^\x00-\x80]/;
-		$fn =~ tr/a-zA-Z0-9_\- \.//cd;
-		for ( 'Content-disposition', 'Content-type') {
-			$v =~ s/name="(.*)"/name*="$fn"/;
-			$entity->head->replace($_, $v);
-		}
 	}
 
 	return
